@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Perspective Product Carousel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    * {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    body {
+      background: #0b0f19;
+      color: #f3f4f6;
+      overflow-x: hidden;
+    }
+
+    /* Fixed Screen Center Selection Axis */
+    .carousel-stage {
+      perspective: 900px;
+      perspective-origin: 50% 50%;
+      position: relative;
+      width: 100%;
+      height: 540px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: pan-y;
+      overflow: hidden;
+    }
+
+    /* Track Container */
+    .carousel-track {
+      position: relative;
+      width: 280px;
+      height: 440px;
+      transform-style: preserve-3d;
+      will-change: transform;
+    }
+
+    /* Card Item Base */
+    .card-item {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #111827;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7);
+      transition: filter 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+      cursor: pointer;
+      backface-visibility: hidden;
+    }
+
+    /* Dim overlay for non-centered cards */
+    .card-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(11, 15, 25, 0.75);
+      backdrop-filter: brightness(65%);
+      transition: opacity 0.25s ease;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* Strict Fixed Center Selection Highlight + Zoom */
+    .card-item.is-center {
+      border: 2px solid #14b8a6 !important;
+      box-shadow: 0 0 45px rgba(20, 184, 166, 0.45), 0 25px 50px rgba(0, 0, 0, 0.95) !important;
+      z-index: 50 !important;
+    }
+
+    .card-item.is-center .card-overlay {
+      opacity: 0;
+    }
+
+    /* Custom Dark Scrollbar */
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(20, 184, 166, 0.4);
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between items-center relative overflow-hidden">
+
+  <!-- Header Section -->
+  <header class="w-full max-w-6xl mx-auto px-6 pt-5 pb-2 flex justify-between items-center z-20">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-full bg-teal-500/20 border border-teal-400/30 flex items-center justify-center font-bold text-xs text-teal-300 shadow-md">
+        3D
+      </div>
+      <span class="font-extrabold text-lg tracking-tight text-white/90">3D Carousel Scheduler</span>
+    </div>
+    
+    <div class="flex items-center gap-2">
+      <button id="currentMonthHeaderBtn" class="flex items-center gap-1.5 bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-400/40 text-xs font-extrabold px-3.5 py-1.5 rounded-full transition active:scale-95 shadow-lg backdrop-blur-md">
+        <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
+        <span>Current Month</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Title & Info -->
+  <div class="text-center z-20 px-4 mt-1">
+    <h1 class="text-xl sm:text-2xl font-extrabold text-white tracking-tight">RESPONSIVE CHECKOUT SLIDER</h1>
+    <p class="text-xs text-gray-400 mt-1 max-w-md mx-auto">Concave 3D Surround • Drag or click side cards to rotate</p>
+  </div>
+
+  <!-- 3D Carousel Stage (Center Axis Reference) -->
+  <main class="w-full relative z-10 my-1">
+    <div class="carousel-stage cursor-grab active:cursor-grabbing" id="carouselStage">
+      <!-- Fixed Center Indicator Guide (Visual Reference) -->
+      <div class="absolute inset-y-0 left-1/2 -translate-x-1/2 w-72 pointer-events-none z-0 border-x border-teal-500/10 bg-teal-500/[0.02]"></div>
+
+      <div class="carousel-track" id="carouselTrack">
+        <!-- Cards dynamically injected -->
+      </div>
+    </div>
+  </main>
+
+  <!-- Bottom Navigation Pill -->
+  <footer class="w-full max-w-lg mx-auto px-4 pb-6 z-20">
+    <div class="bg-gray-900/80 backdrop-blur-md p-3.5 rounded-2xl border border-white/10 shadow-2xl flex items-center justify-between gap-3">
+      
+      <div class="flex items-center gap-2">
+        <button id="prevBtn" class="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 active:scale-95 transition text-white">
+          <i data-lucide="chevron-left" class="w-5 h-5"></i>
+        </button>
+        <button id="nextBtn" class="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 active:scale-95 transition text-white">
+          <i data-lucide="chevron-right" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="text-center">
+        <div id="centerMonthLabel" class="text-sm font-extrabold text-teal-400">November 2026</div>
+        <div id="centerCountLabel" class="text-[11px] text-gray-400 font-medium">Selected Month</div>
+      </div>
+
+      <button id="currentMonthFooterBtn" class="bg-teal-500 hover:bg-teal-400 text-gray-950 font-black text-xs px-3.5 py-2 rounded-xl transition active:scale-95 shadow-lg flex items-center gap-1">
+        <i data-lucide="crosshair" class="w-3.5 h-3.5"></i>
+        <span>Today</span>
+      </button>
+
+    </div>
+  </footer>
+
+  <script>
+    // Timeline Baseline: Nov 2026 corresponds to index offset 0
+    const baseDate = new Date(2026, 10, 1);
+    const visibleRange = 5; // Render -5 to +5 slots relative to active window
+    let slotAngle = 32;     // Angle separation per card on 3D cylinder
+    let radius = 560;       // Radius of 3D cylinder
+
+    // Carousel State
+    let currentIndex = 0;       // Closest card index to center
+    let currentAngle = 0;        // Current rotation angle of track
+    let targetAngle = 0;         // Target rotation angle for smooth animation
+    let isDragging = false;
+    let startX = 0;
+    let lastX = 0;
+    let velocity = 0;
+    let animFrameId = null;
+
+    // DOM References
+    const track = document.getElementById('carouselTrack');
+    const stage = document.getElementById('carouselStage');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const centerMonthLabel = document.getElementById('centerMonthLabel');
+    const centerCountLabel = document.getElementById('centerCountLabel');
+    const currentMonthHeaderBtn = document.getElementById('currentMonthHeaderBtn');
+    const currentMonthFooterBtn = document.getElementById('currentMonthFooterBtn');
+
+    // Dynamic dataset generator per month index offset
+    function getMonthData(offsetIndex) {
+      const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + offsetIndex, 1);
+      const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      const month = monthNames[d.getMonth()];
+      const year = d.getFullYear();
+
+      const sampleGuests = [
+        { name: "hortelano", room: "Bed 1 · Room 366", gender: "Male", date: `${month} 18, ${year}` },
+        { name: "archulie", room: "Bed 1 · Room 217", gender: "Male", date: `${month} 27, ${year}` },
+        { name: "Brainy Race Berceles", room: "Bed 2 · Room 214", gender: "Female", date: `${month} 20, ${year}` },
+        { name: "Kc Kim Donaire", room: "Bed 3 · Room 214", gender: "Female", date: `${month} 1, ${year}` },
+        { name: "Creslor Laput", room: "Bed 1 · Room 214", gender: "Female", date: `${month} 2, ${year}` },
+        { name: "Shahanneh Cacera", room: "Bed 4 · Room 214", gender: "Female", date: `${month} 14, ${year}` }
+      ];
+
+      const count = (offsetIndex === 0) ? 2 : (offsetIndex === 1) ? 2 : (offsetIndex === 2) ? 8 : (offsetIndex === 3) ? 5 : (offsetIndex === 4) ? 1 : 0;
+      return { month: `${month} ${year}`, count, guests: sampleGuests.slice(0, count) };
+    }
+
+    // Calculate dynamic radius based on screen size
+    function updateStageRadius() {
+      const w = window.innerWidth;
+      if (w < 640) {
+        radius = 460;
+        slotAngle = 36;
+      } else if (w < 1024) {
+        radius = 540;
+        slotAngle = 33;
+      } else {
+        radius = 620;
+        slotAngle = 30;
+      }
+      renderTrack();
+    }
+
+    // Render cards around the active focus index
+    function renderTrack() {
+      track.innerHTML = '';
+      const activeCenter = Math.round(-currentAngle / slotAngle);
+
+      for (let i = activeCenter - visibleRange; i <= activeCenter + visibleRange; i++) {
+        const data = getMonthData(i);
+        const card = document.createElement('div');
+        const isSelected = (i === currentIndex);
+
+        card.className = `card-item ${isSelected ? 'is-center' : ''}`;
+        card.dataset.index = i;
+
+        // Position on 3D surround ring
+        const angle = i * slotAngle;
+        const scaleVal = isSelected ? 1.08 : 0.88;
+        card.style.transform = `rotateY(${angle + 180}deg) translateZ(-${radius}px) scale(${scaleVal})`;
+
+        card.innerHTML = `
+          <div class="card-overlay"></div>
+          <div class="p-4 flex flex-col h-full justify-between">
+            <div>
+              <div class="flex items-center justify-between border-b border-gray-800 pb-2.5 mb-3">
+                <div>
+                  <h3 class="font-extrabold text-base text-white tracking-tight">${data.month}</h3>
+                  <p class="text-[11px] text-teal-400 font-semibold mt-0.5">${data.count} checkout${data.count === 1 ? '' : 's'} scheduled</p>
+                </div>
+                <span class="w-6 h-6 rounded-full bg-gray-800 text-teal-300 flex items-center justify-center text-xs font-extrabold shadow">${data.count}</span>
+              </div>
+
+              <div class="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
+                ${data.guests.length > 0 ? data.guests.map(g => `
+                  <div class="bg-gray-800/80 p-2.5 rounded-xl border border-gray-700/60">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-xs font-extrabold text-white">${g.name}</span>
+                      <span class="text-[9px] bg-teal-950 text-teal-300 font-bold px-1.5 py-0.5 rounded border border-teal-500/30">Future</span>
+                    </div>
+                    <div class="text-[10px] text-gray-400">${g.room} · ${g.gender}</div>
+                    <div class="text-[10px] text-gray-300 mt-1">${g.date}</div>
+                    <div class="grid grid-cols-4 gap-1 mt-2">
+                      <button class="bg-gray-700 hover:bg-gray-600 text-white text-[9px] font-bold py-1 rounded transition">Edit</button>
+                      <button class="bg-gray-700 hover:bg-gray-600 text-white text-[9px] font-bold py-1 rounded transition">Extend</button>
+                      <button class="bg-gray-700 hover:bg-gray-600 text-white text-[9px] font-bold py-1 rounded transition">Check out</button>
+                      <button class="bg-gray-700 hover:bg-gray-600 text-white text-[9px] font-bold py-1 rounded transition">Inspect</button>
+                    </div>
+                  </div>
+                `).join('') : '<div class="text-center text-xs text-gray-500 py-12">No checkouts scheduled for this month.</div>'}
+              </div>
+            </div>
+          </div>
+        `;
+
+        card.addEventListener('click', () => {
+          if (Math.abs(velocity) < 0.1) {
+            rotateToIndex(i);
+          }
+        });
+
+        track.appendChild(card);
+      }
+
+      updateCenterHighlight();
+      lucide.createIcons();
+    }
+
+    // Update real-time continuous highlight & scale for closest center card
+    function updateCenterHighlight() {
+      const calculatedIndex = Math.round(-currentAngle / slotAngle);
+
+      if (calculatedIndex !== currentIndex) {
+        currentIndex = calculatedIndex;
+        const currentData = getMonthData(currentIndex);
+        centerMonthLabel.textContent = currentData.month;
+        centerCountLabel.textContent = `${currentData.count} Checkouts`;
+      }
+
+      const cards = track.children;
+      Array.from(cards).forEach(card => {
+        const idx = parseInt(card.dataset.index);
+        const angle = idx * slotAngle;
+        
+        if (idx === currentIndex) {
+          card.classList.add('is-center');
+          card.style.transform = `rotateY(${angle + 180}deg) translateZ(-${radius}px) scale(1.08)`;
+        } else {
+          card.classList.remove('is-center');
+          card.style.transform = `rotateY(${angle + 180}deg) translateZ(-${radius}px) scale(0.88)`;
+        }
+      });
+    }
+
+    // Animation Loop for Inertia and Smooth Snapping
+    function updatePhysics() {
+      if (!isDragging) {
+        // Friction decay
+        velocity *= 0.88;
+        currentAngle += velocity;
+
+        // Smooth snapping to nearest card when velocity slows down
+        if (Math.abs(velocity) < 0.05) {
+          velocity = 0;
+          currentAngle += (targetAngle - currentAngle) * 0.15;
+        }
+
+        track.style.transform = `rotateY(${currentAngle}deg)`;
+        updateCenterHighlight();
+      }
+
+      animFrameId = requestAnimationFrame(updatePhysics);
+    }
+
+    // Rotate directly to a target card index
+    function rotateToIndex(idx) {
+      currentIndex = idx;
+      targetAngle = -idx * slotAngle;
+      velocity = (targetAngle - currentAngle) * 0.2;
+      
+      const data = getMonthData(currentIndex);
+      centerMonthLabel.textContent = data.month;
+      centerCountLabel.textContent = `${data.count} Checkouts`;
+    }
+
+    // Navigate to actual current device month
+    function navigateToActualCurrentMonth() {
+      const now = new Date();
+      const yearDiff = now.getFullYear() - baseDate.getFullYear();
+      const monthDiff = now.getMonth() - baseDate.getMonth();
+      const actualMonthIndex = (yearDiff * 12) + monthDiff;
+
+      rotateToIndex(actualMonthIndex);
+    }
+
+    // Drag / Swipe Interaction (Non-Inverted Direction)
+    function handleDragStart(e) {
+      isDragging = true;
+      velocity = 0;
+      startX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+      lastX = startX;
+    }
+
+    function handleDragMove(e) {
+      if (!isDragging) return;
+      const currentX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+      const deltaX = currentX - lastX;
+      lastX = currentX;
+
+      // Non-inverted movement calculation
+      const dragSensitivity = 0.18;
+      currentAngle += deltaX * dragSensitivity;
+      velocity = deltaX * dragSensitivity;
+
+      track.style.transform = `rotateY(${currentAngle}deg)`;
+
+      // Continuous selection highlight transfer while dragging
+      currentIndex = Math.round(-currentAngle / slotAngle);
+      targetAngle = -currentIndex * slotAngle;
+      
+      updateCenterHighlight();
+
+      // Dynamically re-render cards if approaching boundary edges
+      const activeCenter = Math.round(-currentAngle / slotAngle);
+      const cardIndices = Array.from(track.children).map(c => parseInt(c.dataset.index));
+      const minCardIndex = Math.min(...cardIndices);
+      const maxCardIndex = Math.max(...cardIndices);
+
+      if (activeCenter - minCardIndex < 2 || maxCardIndex - activeCenter < 2) {
+        renderTrack();
+      }
+    }
+
+    function handleDragEnd() {
+      if (!isDragging) return;
+      isDragging = false;
+
+      // Cap maximum fling velocity to prevent uncontrolled month skipping
+      const maxVelocity = 4;
+      velocity = Math.max(-maxVelocity, Math.min(maxVelocity, velocity));
+
+      // Calculate nearest target month after drag flick
+      const projectedAngle = currentAngle + (velocity * 4);
+      currentIndex = Math.round(-projectedAngle / slotAngle);
+      targetAngle = -currentIndex * slotAngle;
+    }
+
+    // Event Listeners
+    stage.addEventListener('mousedown', handleDragStart);
+    window.addEventListener('mousemove', handleDragMove);
+    window.addEventListener('mouseup', handleDragEnd);
+
+    stage.addEventListener('touchstart', handleDragStart, { passive: true });
+    window.addEventListener('touchmove', handleDragMove, { passive: true });
+    window.addEventListener('touchend', handleDragEnd);
+
+    prevBtn.addEventListener('click', () => rotateToIndex(currentIndex - 1));
+    nextBtn.addEventListener('click', () => rotateToIndex(currentIndex + 1));
+
+    currentMonthHeaderBtn.addEventListener('click', navigateToActualCurrentMonth);
+    currentMonthFooterBtn.addEventListener('click', navigateToActualCurrentMonth);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') rotateToIndex(currentIndex - 1);
+      if (e.key === 'ArrowRight') rotateToIndex(currentIndex + 1);
+    });
+
+    window.addEventListener('resize', updateStageRadius);
+
+    window.onload = () => {
+      updateStageRadius();
+      renderTrack();
+      rotateToIndex(0);
+      animFrameId = requestAnimationFrame(updatePhysics);
+    };
+  </script>
+</body>
+</html>

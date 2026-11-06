@@ -1,0 +1,84 @@
+rules_version = '2';
+// Rules for the separate "central" Firestore database (Super Admin platform).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isSuper() {
+      return signedIn() && exists(/databases/$(database)/documents/superAdmins/$(request.auth.uid));
+    }
+    function branchDoc(uid) {
+      return get(/databases/$(database)/documents/branches/$(uid)).data;
+    }
+    // A branch owner may only decide a pending request, or revoke an approved one.
+    function okMove(before, after) {
+      return before == after
+        || (before == 'pending' && after in ['approved', 'rejected'])
+        || (before == 'approved' && after == 'revoked');
+    }
+
+    // Super Admins are added by hand in the Firebase console (see SETUP-CENTRAL.md).
+    match /superAdmins/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list: if isSuper();
+      // A Super Admin can authorize another account (by user ID) or remove someone else.
+      allow create: if isSuper() && request.resource.data.keys().hasOnly(['email', 'addedBy', 'addedAt']);
+      allow delete: if isSuper() && request.auth.uid != uid;
+    }
+
+    // One-time, short-lived pairing codes created by a Branch Admin.
+    match /pairing/{code} {
+      allow get: if isSuper();
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['ownerUid', 'dormName', 'location', 'expiresAt'])
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt <= request.time + duration.value(20, 'm');
+      allow delete: if isSuper() || (signedIn() && resource.data.ownerUid == request.auth.uid);
+    }
+
+    // One connection record per branch (document id = the Branch Admin's uid).
+    match /branches/{uid} {
+      allow get: if isSuper() || (signedIn() && request.auth.uid == uid);
+      allow list: if isSuper();
+      allow create: if isSuper()
+        && request.resource.data.ownerUid == uid
+        && request.resource.data.dirStatus == 'pending'
+        && request.resource.data.analyticsStatus == 'pending'
+        && request.resource.data.keys().hasOnly(['ownerUid', 'dormName', 'location', 'purpose', 'pairingCode', 'requestedBy', 'dirStatus', 'analyticsStatus', 'createdAt'])
+        && get(/databases/$(database)/documents/pairing/$(request.resource.data.pairingCode)).data.ownerUid == uid
+        && get(/databases/$(database)/documents/pairing/$(request.resource.data.pairingCode)).data.expiresAt > request.time;
+      // Only the Branch Admin can change the two permissions. Super Admin cannot.
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dirStatus', 'analyticsStatus', 'decidedAt'])
+        && okMove(resource.data.dirStatus, request.resource.data.dirStatus)
+        && okMove(resource.data.analyticsStatus, request.resource.data.analyticsStatus);
+      allow delete: if isSuper() || (signedIn() && request.auth.uid == uid);
+
+      // Analytics permission: historical vacancy snapshots.
+      match /snapshots/{id} {
+        allow read: if isSuper() && branchDoc(uid).analyticsStatus == 'approved';
+        allow create: if signedIn() && request.auth.uid == uid && branchDoc(uid).analyticsStatus == 'approved';
+      }
+    }
+
+    // Public directory record (name, location, counts only). Written by the Branch Admin
+    // while Directory is approved. Any signed-in account (Marketing Viewers) can read it.
+    match /directory/{uid} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.ownerUid == uid
+        && branchDoc(uid).dirStatus == 'approved'
+        && request.resource.data.keys().hasOnly(['ownerUid', 'dormName', 'location', 'total', 'vacant', 'occupied', 'maleVacant', 'femaleVacant', 'studentVacant', 'revieweeVacant', 'acVacant', 'nonAcVacant', 'updatedAt']);
+      allow delete: if isSuper() || (signedIn() && request.auth.uid == uid);
+    }
+
+    // Append-only audit trail.
+    match /audit/{id} {
+      allow read: if isSuper();
+      allow create: if signedIn()
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['actorUid', 'actorEmail', 'action', 'branch', 'detail', 'at']);
+    }
+  }
+}
